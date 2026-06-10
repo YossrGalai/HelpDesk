@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\TicketController;
 use Illuminate\Support\Facades\Route;
 
@@ -13,32 +14,35 @@ use Illuminate\Support\Facades\Route;
 // ── PHASE 0 – Auth ──────────────────────────────────────────────────────────
 Route::prefix('auth')->group(function () {
 
-    // Public
     Route::post('register', [AuthController::class, 'register']);
     Route::post('login',    [AuthController::class, 'login']);
 
-    // Protégé
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
         Route::get('me',      [AuthController::class, 'me']);
     });
 });
 
-// ── PHASE 1 – Tickets (toutes protégées) ────────────────────────────────────
-Route::middleware('auth:sanctum')->prefix('tickets')->group(function () {
+// ── PHASE 1 & 2 – Tickets + Comments (toutes protégées) ─────────────────────
+Route::middleware('auth:sanctum')->group(function () {
 
-    Route::get('/',                     [TicketController::class, 'index']);   // lister
-    Route::post('/',                    [TicketController::class, 'store']);   // créer
-    Route::get('/{ticket}',             [TicketController::class, 'show']);    // détail
-    Route::patch('/{ticket}',           [TicketController::class, 'update']); // modifier
-    Route::patch('/{ticket}/close',     [TicketController::class, 'close']);  // fermer
+    // Tickets
+    Route::prefix('tickets')->group(function () {
+        Route::get('/',                 [TicketController::class, 'index']);
+        Route::post('/',                [TicketController::class, 'store']);
+        Route::get('/{ticket}',         [TicketController::class, 'show']);
+        Route::patch('/{ticket}',       [TicketController::class, 'update']);
+        Route::patch('/{ticket}/close', [TicketController::class, 'close']);
 
+        // Comments — routes imbriquées sous /tickets/{ticket}/comments
+        Route::get('/{ticket}/comments',  [CommentController::class, 'index']);
+        Route::post('/{ticket}/comments', [CommentController::class, 'store']);
+    });
 });
 
 /*
 |--------------------------------------------------------------------------
 | Future phases
 |--------------------------------------------------------------------------
-| Phase 2 – Comments
 | Phase 3 – Admin / Role management
 */

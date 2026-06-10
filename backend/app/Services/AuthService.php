@@ -48,7 +48,7 @@ class AuthService
         }
 
         // Revoke all previous tokens — one active session per user.
-        PersonalAccessToken::where('tokenable_id', $user->id)->delete();
+        // PersonalAccessToken::where('tokenable_id', $user->id)->delete();
 
         $token = $user->createToken('api-token')->plainTextToken;
 

@@ -40,4 +40,9 @@ class Ticket extends Model
             TicketComment::class
         );
     }
+
+    public function histories()
+    {
+        return $this->hasMany(TicketHistory::class)->oldest();
+    }
 }

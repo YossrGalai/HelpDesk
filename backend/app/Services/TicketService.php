@@ -7,9 +7,17 @@ use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use App\Services\TicketHistoryService;
 
 class TicketService
 {
+    private TicketHistoryService $historyService;
+
+    public function __construct(TicketHistoryService $historyService)
+    {
+        $this->historyService = $historyService;
+    }
+
     /**
      * Paginated list of tickets.
      * Admin → tous les tickets.
@@ -46,7 +54,7 @@ class TicketService
      */
     public function find(int $id): Ticket
     {
-        return Ticket::with(['creator', 'assignee', 'comments.user'])->findOrFail($id);
+        return Ticket::with(['creator', 'assignee', 'comments.user','histories.changedBy',])->findOrFail($id);
     }
 
     /**
@@ -85,20 +93,27 @@ class TicketService
     {
         $this->authorizeModify($user, $ticket);
 
-        $fields = ['title', 'description', 'priority', 'status'];
+        // ── snapshot avant modification ──────────────────────────────────────
+        $watchedFields = ['title', 'description', 'priority', 'status', 'assigned_to'];
+        $original = $ticket->only($watchedFields);
+        // ────────────────────────────────────────────────────────────────────
 
+        $fields = ['title', 'description', 'priority', 'status'];
         foreach ($fields as $field) {
             if (isset($data[$field])) {
                 $ticket->$field = $data[$field];
             }
         }
 
-        // assigned_to peut être null (désassigner) — on vérifie la présence de la clé
         if (array_key_exists('assigned_to', $data)) {
             $ticket->assigned_to = $data['assigned_to'];
         }
 
         $ticket->save();
+
+        // ── enregistrer l'historique ─────────────────────────────────────────
+        $this->historyService->record($user, $ticket, $original, $watchedFields);
+        // ────────────────────────────────────────────────────────────────────
 
         return $ticket->fresh(['creator', 'assignee']);
     }
@@ -116,8 +131,12 @@ class TicketService
     {
         $this->authorizeModify($user, $ticket);
 
+        $original = $ticket->only(['status']);
+
         $ticket->status = TicketStatus::CLOSED;
         $ticket->save();
+
+        $this->historyService->record($user, $ticket, $original, ['status']);
 
         return $ticket->fresh(['creator', 'assignee']);
     }
