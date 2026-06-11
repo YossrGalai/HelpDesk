@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ticket\CreateTicketRequest;
 use App\Http\Requests\Ticket\UpdateTicketRequest;
-use App\Http\Resources\Ticket\TicketCollection;
 use App\Http\Resources\Ticket\TicketResource;
 use App\Http\Requests\Ticket\AssignTicketRequest;
 use App\Http\Requests\Ticket\SetPriorityRequest;
@@ -32,16 +31,31 @@ class TicketController extends Controller
      * Liste paginée — filtrable par status et priority.
      *
      * @param  Request  $request
-     * @return TicketCollection
      */
-    public function index(Request $request): TicketCollection
+    public function index(Request $request): JsonResponse
     {
-        $tickets = $this->ticketService->list(
+        $paginator = $this->ticketService->list(
             $request->user(),
-            $request->only(['status', 'priority'])
+            $request->only(['status', 'priority', 'assigned_to'])
         );
 
-        return new TicketCollection($tickets);
+        return response()->json([
+            'data'  => TicketResource::collection($paginator->items()),
+            'meta'  => [
+                'current_page' => $paginator->currentPage(),
+                'last_page'    => $paginator->lastPage(),
+                'per_page'     => $paginator->perPage(),
+                'total'        => $paginator->total(),
+                'from'         => $paginator->firstItem(),
+                'to'           => $paginator->lastItem(),
+            ],
+            'links' => [
+                'first' => $paginator->url(1),
+                'last'  => $paginator->url($paginator->lastPage()),
+                'prev'  => $paginator->previousPageUrl(),
+                'next'  => $paginator->nextPageUrl(),
+            ],
+        ]);
     }
 
     /**
@@ -127,18 +141,10 @@ class TicketController extends Controller
 
     /**
      * PATCH /api/tickets/{ticket}/assign
-     * Assigner un ticket à un agent — admin uniquement.
-     *
-     * @param  AssignTicketRequest  $request
-     * @param  Ticket               $ticket
-     * @return JsonResponse
+     * Admin uniquement — protégé par middleware 'role:admin' dans les routes.
      */
     public function assign(AssignTicketRequest $request, Ticket $ticket): JsonResponse
     {
-        //if (! $this->isAdmin($request->user())) {
-        //    return response()->json(['message' => 'Action réservée aux administrateurs.'], 403);
-        //}
-
         $updated = $this->ticketService->assign(
             $request->user(),
             $ticket,
@@ -152,18 +158,10 @@ class TicketController extends Controller
 
     /**
      * PATCH /api/tickets/{ticket}/priority
-     * Changer la priorité d'un ticket — admin uniquement.
-     *
-     * @param  SetPriorityRequest  $request
-     * @param  Ticket              $ticket
-     * @return JsonResponse
+     * Admin uniquement — protégé par middleware 'role:admin' dans les routes.
      */
     public function setPriority(SetPriorityRequest $request, Ticket $ticket): JsonResponse
     {
-        //if (! $this->isAdmin($request->user())) {
-        //    return response()->json(['message' => 'Action réservée aux administrateurs.'], 403);
-        //}
-
         $updated = $this->ticketService->setPriority(
             $request->user(),
             $ticket,
@@ -173,12 +171,5 @@ class TicketController extends Controller
         return (new TicketResource($updated))
             ->response()
             ->setStatusCode(200);
-    }
-
-    // ── Helper privé ────────────────────────────────────────────────────────────
-
-    private function isAdmin(\App\Models\User $user): bool
-    {
-        return $user->roles()->where('name', 'admin')->exists();
     }
 }

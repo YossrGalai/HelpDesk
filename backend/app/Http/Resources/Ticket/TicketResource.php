@@ -20,7 +20,7 @@ class TicketResource extends JsonResource
             'status'      => $this->status,
             'priority'    => $this->priority,
             'creator'     => new UserResource($this->whenLoaded('creator')),
-            'assignee'    => $this->whenLoaded('assignee', function () {
+            'assigned_to'    => $this->whenLoaded('assignee', function () {
                 return $this->assignee ? new UserResource($this->assignee) : null;
             }),
             'comments_count' => $this->whenLoaded('comments', function () {

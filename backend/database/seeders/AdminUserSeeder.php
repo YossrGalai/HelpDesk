@@ -12,21 +12,17 @@ class AdminUserSeeder extends Seeder
     public function run()
     {
         $admin = User::firstOrCreate(
+            ['email' => 'admin@helpdesk.com'],
             [
-                'email' => 'admin@helpdesk.com'
-            ],
-            [
-                'name' => 'Administrator',
-                'password' => Hash::make('password')
+                'name'     => 'Administrator',
+                'password' => Hash::make('password'),
             ]
         );
 
-        $adminRole = Role::where('name', 'ADMIN')->first();
+        $adminRole = Role::where('name', 'admin')->first();
 
         if ($adminRole) {
-            $admin->roles()->syncWithoutDetaching([
-                $adminRole->id
-            ]);
+            $admin->roles()->syncWithoutDetaching([$adminRole->id]);
         }
     }
 }
