@@ -7,6 +7,8 @@ use App\Http\Requests\Ticket\CreateTicketRequest;
 use App\Http\Requests\Ticket\UpdateTicketRequest;
 use App\Http\Resources\Ticket\TicketCollection;
 use App\Http\Resources\Ticket\TicketResource;
+use App\Http\Requests\Ticket\AssignTicketRequest;
+use App\Http\Requests\Ticket\SetPriorityRequest;
 use App\Models\Ticket;
 use App\Services\TicketService;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -121,5 +123,62 @@ class TicketController extends Controller
         return (new TicketResource($closed))
             ->response()
             ->setStatusCode(200);
+    }
+
+    /**
+     * PATCH /api/tickets/{ticket}/assign
+     * Assigner un ticket à un agent — admin uniquement.
+     *
+     * @param  AssignTicketRequest  $request
+     * @param  Ticket               $ticket
+     * @return JsonResponse
+     */
+    public function assign(AssignTicketRequest $request, Ticket $ticket): JsonResponse
+    {
+        //if (! $this->isAdmin($request->user())) {
+        //    return response()->json(['message' => 'Action réservée aux administrateurs.'], 403);
+        //}
+
+        $updated = $this->ticketService->assign(
+            $request->user(),
+            $ticket,
+            $request->validated()['assigned_to']
+        );
+
+        return (new TicketResource($updated))
+            ->response()
+            ->setStatusCode(200);
+    }
+
+    /**
+     * PATCH /api/tickets/{ticket}/priority
+     * Changer la priorité d'un ticket — admin uniquement.
+     *
+     * @param  SetPriorityRequest  $request
+     * @param  Ticket              $ticket
+     * @return JsonResponse
+     */
+    public function setPriority(SetPriorityRequest $request, Ticket $ticket): JsonResponse
+    {
+        //if (! $this->isAdmin($request->user())) {
+        //    return response()->json(['message' => 'Action réservée aux administrateurs.'], 403);
+        //}
+
+        $updated = $this->ticketService->setPriority(
+            $request->user(),
+            $ticket,
+            $request->validated()['priority']
+        );
+
+        return (new TicketResource($updated))
+            ->response()
+            ->setStatusCode(200);
+    }
+
+    // ── Helper privé ────────────────────────────────────────────────────────────
+
+    private function isAdmin(\App\Models\User $user): bool
+    {
+        return $user->roles()->where('name', 'admin')->exists();
     }
 }

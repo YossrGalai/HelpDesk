@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\TicketController;
+use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -37,7 +38,14 @@ Route::middleware('auth:sanctum')->group(function () {
         // Comments — routes imbriquées sous /tickets/{ticket}/comments
         Route::get('/{ticket}/comments',  [CommentController::class, 'index']);
         Route::post('/{ticket}/comments', [CommentController::class, 'store']);
+
+        // assignement et priorité
+        Route::patch('/{ticket}/assign', [TicketController::class, 'assign']);
+        Route::patch('/{ticket}/priority', [TicketController::class, 'setPriority']);
     });
+
+    // Utilisateurs — pour le dropdown d'assignation
+    Route::get('/users', [UserController::class, 'index']);
 });
 
 /*

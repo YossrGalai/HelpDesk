@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\TicketStatus;
+use App\Enums\TicketPriority;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -41,6 +42,10 @@ class TicketService
 
         if (isset($filters['priority'])) {
             $query->where('priority', $filters['priority']);
+        }
+
+        if (isset($filters['assigned_to'])) {
+            $query->where('assigned_to', $filters['assigned_to']);
         }
 
         return $query->latest()->paginate(15);
@@ -164,5 +169,54 @@ class TicketService
         if ($ticket->created_by !== $user->id && ! $this->isAdmin($user)) {
             throw new AuthorizationException('You are not allowed to modify this ticket.');
         }
+    }
+
+    /**
+     * Assigner un ticket à un utilisateur.
+     * Admin only — géré dans le controller.
+     *
+     * @param  User    $user     L'admin qui fait l'action
+     * @param  Ticket  $ticket
+     * @param  int     $assigneeId
+     * @return Ticket
+     */
+    public function assign(User $user, Ticket $ticket, int $assigneeId): Ticket
+    {
+        // snapshot avant modification
+        $original = $ticket->only(['assigned_to', 'status']);
+
+        $ticket->assigned_to = $assigneeId;
+
+        // Règle métier : un ticket OPEN assigné passe automatiquement IN_PROGRESS
+        if ($ticket->status === TicketStatus::OPEN) {
+            $ticket->status = TicketStatus::IN_PROGRESS;
+        }
+
+        $ticket->save();
+
+        $this->historyService->record($user, $ticket, $original, ['assigned_to', 'status']);
+
+        return $ticket->fresh(['creator', 'assignee']);
+    }
+
+    /**
+     * Changer la priorité d'un ticket.
+     * Admin only — géré dans le controller.
+     *
+     * @param  User    $user
+     * @param  Ticket  $ticket
+     * @param  string  $priority
+     * @return Ticket
+     */
+    public function setPriority(User $user, Ticket $ticket, string $priority): Ticket
+    {
+        $original = $ticket->only(['priority']);
+
+        $ticket->priority = $priority;
+        $ticket->save();
+
+        $this->historyService->record($user, $ticket, $original, ['priority']);
+
+        return $ticket->fresh(['creator', 'assignee']);
     }
 }
