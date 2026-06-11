@@ -6,15 +6,8 @@ use App\Http\Controllers\Api\TicketController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
-/*
-|--------------------------------------------------------------------------
-| API Routes — Helpdesk
-|--------------------------------------------------------------------------
-*/
-
-// ── PHASE 0 – Auth ──────────────────────────────────────────────────────────
+// ── PHASE 0 – Auth ───────────────────────────────────────────────────────────
 Route::prefix('auth')->group(function () {
-
     Route::post('register', [AuthController::class, 'register']);
     Route::post('login',    [AuthController::class, 'login']);
 
@@ -24,33 +17,32 @@ Route::prefix('auth')->group(function () {
     });
 });
 
-// ── PHASE 1 & 2 – Tickets + Comments (toutes protégées) ─────────────────────
+// ── PHASES 1-4 — Routes protégées ────────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
 
-    // Tickets
+    // ── Tickets — accessibles à tous les rôles (scope géré dans le service) ──
     Route::prefix('tickets')->group(function () {
-        Route::get('/',                 [TicketController::class, 'index']);
-        Route::post('/',                [TicketController::class, 'store']);
-        Route::get('/{ticket}',         [TicketController::class, 'show']);
-        Route::patch('/{ticket}',       [TicketController::class, 'update']);
-        Route::patch('/{ticket}/close', [TicketController::class, 'close']);
+        Route::get('/',                        [TicketController::class, 'index']);
+        Route::post('/',                       [TicketController::class, 'store']);
+        Route::get('/{ticket}',                [TicketController::class, 'show']);
+        Route::patch('/{ticket}',              [TicketController::class, 'update']);
+        Route::patch('/{ticket}/close',        [TicketController::class, 'close']);
 
-        // Comments — routes imbriquées sous /tickets/{ticket}/comments
-        Route::get('/{ticket}/comments',  [CommentController::class, 'index']);
-        Route::post('/{ticket}/comments', [CommentController::class, 'store']);
+        // Admin uniquement
+        Route::middleware('role:admin')->group(function () {
+            Route::patch('/{ticket}/assign',   [TicketController::class, 'assign']);
+            Route::patch('/{ticket}/priority', [TicketController::class, 'setPriority']);
+        });
 
-        // assignement et priorité
-        Route::patch('/{ticket}/assign', [TicketController::class, 'assign']);
-        Route::patch('/{ticket}/priority', [TicketController::class, 'setPriority']);
+        // Comments
+        Route::get('/{ticket}/comments',       [CommentController::class, 'index']);
+        Route::post('/{ticket}/comments',      [CommentController::class, 'store']);
     });
 
-    // Utilisateurs — pour le dropdown d'assignation
-    Route::get('/users', [UserController::class, 'index']);
+    // ── Users — admin uniquement ──────────────────────────────────────────────
+    Route::middleware('role:admin')->prefix('users')->group(function () {
+        Route::get('/',                        [UserController::class, 'index']);
+        Route::post('/{user}/roles',           [UserController::class, 'assignRole']);
+        Route::delete('/{user}/roles/{role}',  [UserController::class, 'removeRole']);
+    });
 });
-
-/*
-|--------------------------------------------------------------------------
-| Future phases
-|--------------------------------------------------------------------------
-| Phase 3 – Admin / Role management
-*/

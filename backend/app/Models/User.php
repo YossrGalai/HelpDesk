@@ -6,6 +6,7 @@ use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Enums\UserRole;
 
 class User extends Authenticatable
 {
@@ -44,4 +45,27 @@ class User extends Authenticatable
             'user_roles'
         );
     }
+
+    /**
+     * Vérifie si l'utilisateur possède un rôle donné.
+     *
+     * @param  string  $role
+     * @return bool
+     */
+    public function hasRole(string $role): bool
+    {
+        return $this->roles()->where('name', $role)->exists();
+    }
+
+    /**
+     * Vérifie si l'utilisateur possède au moins un des rôles donnés.
+     *
+     * @param  array  $roles
+     * @return bool
+     */
+    public function hasAnyRole(array $roles): bool
+    {
+        return $this->roles()->whereIn('name', $roles)->exists();
+    }
+
 }

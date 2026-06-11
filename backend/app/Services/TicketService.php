@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Enums\TicketStatus;
-use App\Enums\TicketPriority;
+use App\Enums\UserRole;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -12,7 +12,7 @@ use App\Services\TicketHistoryService;
 
 class TicketService
 {
-    private TicketHistoryService $historyService;
+    private $historyService;
 
     public function __construct(TicketHistoryService $historyService)
     {
@@ -20,9 +20,10 @@ class TicketService
     }
 
     /**
-     * Paginated list of tickets.
+     * Liste paginée avec scoping par rôle.
      * Admin → tous les tickets.
-     * Utilisateur → seulement les siens.
+     * Agent → tickets qui lui sont assignés.
+     * User  → tickets qu'il a créés.
      *
      * @param  User   $user
      * @param  array  $filters
@@ -32,7 +33,11 @@ class TicketService
     {
         $query = Ticket::with(['creator', 'assignee']);
 
-        if (! $this->isAdmin($user)) {
+        if ($user->hasRole(UserRole::ADMIN)) {
+            // admin voit tout — pas de restriction
+        } elseif ($user->hasRole(UserRole::AGENT)) {
+            $query->where('assigned_to', $user->id);
+        } else {
             $query->where('created_by', $user->id);
         }
 
@@ -59,7 +64,12 @@ class TicketService
      */
     public function find(int $id): Ticket
     {
-        return Ticket::with(['creator', 'assignee', 'comments.user','histories.changedBy',])->findOrFail($id);
+        return Ticket::with([
+            'creator',
+            'assignee',
+            'comments.user',
+            'histories.changedBy',
+        ])->findOrFail($id);
     }
 
     /**
@@ -85,23 +95,24 @@ class TicketService
 
     /**
      * Mettre à jour un ticket (partial update).
-     * Seul le créateur ou un admin peut modifier.
      *
      * @param  User    $user
      * @param  Ticket  $ticket
      * @param  array   $data
      * @return Ticket
-     *
      * @throws AuthorizationException
      */
     public function update(User $user, Ticket $ticket, array $data): Ticket
     {
         $this->authorizeModify($user, $ticket);
 
-        // ── snapshot avant modification ──────────────────────────────────────
         $watchedFields = ['title', 'description', 'priority', 'status', 'assigned_to'];
-        $original = $ticket->only($watchedFields);
-        // ────────────────────────────────────────────────────────────────────
+        $original      = $ticket->only($watchedFields);
+
+        // Agent : peut seulement changer le status, pas les autres champs
+        if ($user->hasRole(UserRole::AGENT) && ! $user->hasRole(UserRole::ADMIN)) {
+            $data = array_intersect_key($data, array_flip(['status']));
+        }
 
         $fields = ['title', 'description', 'priority', 'status'];
         foreach ($fields as $field) {
@@ -116,9 +127,7 @@ class TicketService
 
         $ticket->save();
 
-        // ── enregistrer l'historique ─────────────────────────────────────────
         $this->historyService->record($user, $ticket, $original, $watchedFields);
-        // ────────────────────────────────────────────────────────────────────
 
         return $ticket->fresh(['creator', 'assignee']);
     }
@@ -129,7 +138,6 @@ class TicketService
      * @param  User    $user
      * @param  Ticket  $ticket
      * @return Ticket
-     *
      * @throws AuthorizationException
      */
     public function close(User $user, Ticket $ticket): Ticket
@@ -146,48 +154,20 @@ class TicketService
         return $ticket->fresh(['creator', 'assignee']);
     }
 
-    // ── Helpers ─────────────────────────────────────────────────────────────
-
-    /**
-     * @param  User  $user
-     * @return bool
-     */
-    private function isAdmin(User $user): bool
-    {
-        return $user->roles()->where('name', 'admin')->exists();
-    }
-
-    /**
-     * @param  User    $user
-     * @param  Ticket  $ticket
-     * @return void
-     *
-     * @throws AuthorizationException
-     */
-    private function authorizeModify(User $user, Ticket $ticket): void
-    {
-        if ($ticket->created_by !== $user->id && ! $this->isAdmin($user)) {
-            throw new AuthorizationException('You are not allowed to modify this ticket.');
-        }
-    }
-
     /**
      * Assigner un ticket à un utilisateur.
-     * Admin only — géré dans le controller.
      *
-     * @param  User    $user     L'admin qui fait l'action
+     * @param  User    $user
      * @param  Ticket  $ticket
      * @param  int     $assigneeId
      * @return Ticket
      */
     public function assign(User $user, Ticket $ticket, int $assigneeId): Ticket
     {
-        // snapshot avant modification
         $original = $ticket->only(['assigned_to', 'status']);
 
         $ticket->assigned_to = $assigneeId;
 
-        // Règle métier : un ticket OPEN assigné passe automatiquement IN_PROGRESS
         if ($ticket->status === TicketStatus::OPEN) {
             $ticket->status = TicketStatus::IN_PROGRESS;
         }
@@ -201,7 +181,6 @@ class TicketService
 
     /**
      * Changer la priorité d'un ticket.
-     * Admin only — géré dans le controller.
      *
      * @param  User    $user
      * @param  Ticket  $ticket
@@ -218,5 +197,34 @@ class TicketService
         $this->historyService->record($user, $ticket, $original, ['priority']);
 
         return $ticket->fresh(['creator', 'assignee']);
+    }
+
+    // ── Helpers privés ───────────────────────────────────────────────────────
+
+    /**
+     * Règles d'autorisation de modification :
+     * Admin  → tous les tickets.
+     * Agent  → seulement ses tickets assignés.
+     * User   → seulement ses propres tickets.
+     *
+     * @param  User    $user
+     * @param  Ticket  $ticket
+     * @throws AuthorizationException
+     */
+    private function authorizeModify(User $user, Ticket $ticket): void
+    {
+        if ($user->hasRole(UserRole::ADMIN)) {
+            return;
+        }
+
+        if ($user->hasRole(UserRole::AGENT) && $ticket->assigned_to === $user->id) {
+            return;
+        }
+
+        if ($ticket->created_by === $user->id) {
+            return;
+        }
+
+        throw new AuthorizationException('You are not allowed to modify this ticket.');
     }
 }
