@@ -2,18 +2,15 @@
 
 namespace App\Services;
 
+use Laravel\Sanctum\PersonalAccessToken;
 use App\Models\User;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Hash;
-use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthService
 {
     /**
-     * Register a new user and issue an API token.
-     *
-     * @param  array  $data
-     * @return array
+     * Inscription d'un nouvel utilisateur.
      */
     public function register(array $data): array
     {
@@ -23,19 +20,19 @@ class AuthService
             'password' => Hash::make($data['password']),
         ]);
 
+        // Note: Le rôle sera assigné par l'admin après création
+        // Pas d'assignation de rôle par défaut
+
         $token = $user->createToken('api-token')->plainTextToken;
 
         return [
-            'user'  => $user,
+            'user'  => $user->load('roles'),
             'token' => $token,
         ];
     }
 
     /**
-     * Authenticate an existing user and issue an API token.
-     *
-     * @param  array  $credentials
-     * @return array
+     * Connexion — messages d'erreur distincts en français.
      *
      * @throws AuthenticationException
      */
@@ -43,31 +40,37 @@ class AuthService
     {
         $user = User::where('email', $credentials['email'])->first();
 
-        if (! $user || ! Hash::check($credentials['password'], $user->password)) {
-            throw new AuthenticationException('The provided credentials are incorrect.');
+        // Cas 1 : email inexistant
+        if (!$user) {
+            throw new AuthenticationException(
+                'Aucun compte trouvé avec cette adresse e-mail.'
+            );
         }
 
-        // Revoke all previous tokens — one active session per user.
-        // PersonalAccessToken::where('tokenable_id', $user->id)->delete();
+        // Cas 2 : mot de passe incorrect
+        if (!Hash::check($credentials['password'], $user->password)) {
+            throw new AuthenticationException(
+                'Mot de passe incorrect. Veuillez réessayer.'
+            );
+        }
 
         $token = $user->createToken('api-token')->plainTextToken;
 
         return [
-            'user'  => $user,
+            'user'  => $user->load('roles'),
             'token' => $token,
         ];
     }
 
     /**
-     * Revoke the current access token (logout).
-     *
-     * @param  User  $user
-     * @return void
+     * Déconnexion — révoque le token courant.
      */
     public function logout(User $user): void
     {
+        /** @var PersonalAccessToken|null $token */
         $token = $user->currentAccessToken();
-        if ($token instanceof PersonalAccessToken) {
+
+        if ($token) {
             $token->delete();
         }
     }
